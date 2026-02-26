@@ -4,13 +4,12 @@
     "name": "Primatrix"
   },
   "metadata": {
-    "description": "A collection of reusable Agent Skills for Claude Code",
-    "pluginRoot": "./plugins"
+    "description": "A collection of reusable Agent Skills for Claude Code"
   },
   "plugins": [
     {
       "name": "exec-remote",
-      "source": "exec-remote",
+      "source": "./plugins/exec-remote",
       "description": "Execute Python scripts on remote GPU/TPU clusters via SkyPilot",
       "version": "1.0.0",
       "license": "Apache-2.0",
@@ -19,7 +18,7 @@
     },
     {
       "name": "linear",
-      "source": "linear",
+      "source": "./plugins/linear",
       "description": "Manage issues, projects & team workflows in Linear",
       "version": "1.0.0",
       "license": "Apache-2.0",
