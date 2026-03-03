@@ -54,7 +54,7 @@ All test execution uses **SSH + tmux** for reliable process management and log i
 ### General Workflow
 
 1. SSH into the cluster
-2. Sync code to the remote workdir
+2. Update code on the remote via git
 3. Start test tasks in named tmux sessions
 4. Monitor and retrieve results
 
@@ -63,37 +63,35 @@ All test execution uses **SSH + tmux** for reliable process management and log i
 ### Step 1: SSH into the cluster
 
 ```bash
-sky ssh $(cat .cluster_name_tpu)
-```
+# Get the cluster IP
+CLUSTER_IP=$(sky status --ip $(cat .cluster_name_tpu))
 
-This automatically handles authentication and connects you to the remote TPU VM.
+# SSH directly to the remote
+ssh -i ~/.ssh/sky-key gcpuser@$CLUSTER_IP
+```
 
 ---
 
-### Step 2: Sync code to the remote
+### Step 2: Update code on the remote via git
 
-From your **local machine** (in a separate terminal), sync the latest code:
-
-```bash
-CLUSTER_NAME=$(cat .cluster_name_tpu)
-sky rsync $(cat .cluster_name_tpu) . ~/sky_workdir/
-```
-
-Or use rsync directly if you need more control:
-
-```bash
-CLUSTER_IP=$(sky status --ip $(cat .cluster_name_tpu))
-rsync -avz --exclude '.git' --exclude '__pycache__' --exclude '*.egg-info' \
-  -e "ssh -i ~/.ssh/sky-key" \
-  . gcpuser@$CLUSTER_IP:~/sky_workdir/
-```
-
-Then on the **remote machine**, install/update dependencies:
+On the **remote machine**, use git to pull the latest changes:
 
 ```bash
 cd ~/sky_workdir
+
+# Pull latest changes from the remote repository
+git fetch origin
+git pull origin <branch-name>
+
+# Or if you need to switch branches
+git checkout <branch-name>
+git pull origin <branch-name>
+
+# Install/update dependencies after pulling
 uv sync --extra tpu
 ```
+
+**Important:** Always commit and push your local changes before running tests on the remote. The remote should pull from the git repository, not sync from your local filesystem.
 
 ---
 
@@ -217,8 +215,8 @@ tmux kill-session -t client
 
 ## 5. Operational Notes
 
-- **SSH Access**: Use `sky ssh $(cat .cluster_name_tpu)` to connect to the cluster
-- **Code Sync**: Always sync code before running tests using `sky rsync` or direct rsync
+- **SSH Access**: Use direct SSH with `ssh -i ~/.ssh/sky-key gcpuser@$CLUSTER_IP` to connect to the cluster
+- **Code Updates**: Always use git pull on the remote to update code; commit and push local changes first
 - **Tmux Sessions**: All test execution happens in named tmux sessions for reliability and log inspection
 - **Workdir**: The remote workdir is at `~/sky_workdir/` on the TPU VM
 - **Logs**: View logs using `tmux capture-pane` or by attaching to the session
