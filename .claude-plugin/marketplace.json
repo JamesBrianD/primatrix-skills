@@ -42,6 +42,15 @@
       "license": "Apache-2.0",
       "keywords": ["sglang", "jax", "tpu", "skypilot", "testing", "debug"],
       "category": "infrastructure"
+    },
+    {
+      "name": "agent-worktree",
+      "source": "./plugins/agent-worktree",
+      "description": "Create and manage git worktrees with metadata tracking for PR workflows",
+      "version": "1.0.0",
+      "license": "Apache-2.0",
+      "keywords": ["git", "worktree", "workflow", "pr"],
+      "category": "development"
     }
   ]
 }
