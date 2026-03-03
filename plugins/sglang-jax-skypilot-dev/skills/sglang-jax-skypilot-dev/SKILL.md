@@ -49,27 +49,91 @@ sky down $(cat .cluster_name_tpu) -y
 
 ## 4. Running Tests
 
-There are two testing modes: **test file testing** and **service debug testing**.
+All test execution uses **SSH + tmux** for reliable process management and log inspection. Never use `sky exec` for running tests.
+
+### General Workflow
+
+1. SSH into the cluster
+2. Sync code to the remote workdir
+3. Start test tasks in named tmux sessions
+4. Monitor and retrieve results
 
 ---
 
-### Mode A: Test File Testing
+### Step 1: SSH into the cluster
+
+```bash
+sky ssh $(cat .cluster_name_tpu)
+```
+
+This automatically handles authentication and connects you to the remote TPU VM.
+
+---
+
+### Step 2: Sync code to the remote
+
+From your **local machine** (in a separate terminal), sync the latest code:
+
+```bash
+CLUSTER_NAME=$(cat .cluster_name_tpu)
+sky rsync $(cat .cluster_name_tpu) . ~/sky_workdir/
+```
+
+Or use rsync directly if you need more control:
+
+```bash
+CLUSTER_IP=$(sky status --ip $(cat .cluster_name_tpu))
+rsync -avz --exclude '.git' --exclude '__pycache__' --exclude '*.egg-info' \
+  -e "ssh -i ~/.ssh/sky-key" \
+  . gcpuser@$CLUSTER_IP:~/sky_workdir/
+```
+
+Then on the **remote machine**, install/update dependencies:
+
+```bash
+cd ~/sky_workdir
+uv sync --extra tpu
+```
+
+---
+
+### Step 3: Run tests in tmux sessions
+
+#### Mode A: Test File Testing
 
 Run test files directly under the `test/` directory. Use this for unit tests, integration tests, and regression tests that don't require a live server.
 
 **Run the full test suite:**
 ```bash
-sky exec $(cat .cluster_name_tpu) --workdir . "uv run --extra tpu python test/srt/run_suite.py"
+# On the remote machine:
+tmux new-session -d -s test-suite -c ~/sky_workdir
+tmux send-keys -t test-suite \
+  "uv run --extra tpu python test/srt/run_suite.py" Enter
+
+# Follow the output
+tmux attach -t test-suite
 ```
 
 **Run a single test file:**
 ```bash
-sky exec $(cat .cluster_name_tpu) --workdir . "uv run --extra tpu python -m pytest test/srt/<test_file.py> -v"
+# On the remote machine:
+tmux new-session -d -s test -c ~/sky_workdir
+tmux send-keys -t test \
+  "uv run --extra tpu python -m pytest test/srt/<test_file.py> -v" Enter
+
+# Follow the output
+tmux attach -t test
 ```
 
 **Run tests matching a pattern:**
 ```bash
-sky exec $(cat .cluster_name_tpu) --workdir . "uv run --extra tpu python -m pytest test/srt/ -k <pattern> -v"
+# On the remote machine:
+tmux new-session -d -s test -c ~/sky_workdir
+tmux send-keys -t test \
+  "uv run --extra tpu python -m pytest test/srt/ -k <pattern> -v" Enter
+
+# Follow the output
+tmux attach -t test
 ```
 
 **Common pytest flags:**
@@ -84,40 +148,11 @@ sky exec $(cat .cluster_name_tpu) --workdir . "uv run --extra tpu python -m pyte
 
 ---
 
-### Mode B: Service Debug Testing
+#### Mode B: Service Debug Testing
 
 Use this when you need to start a server process, wait for it to be ready, then run a second process (debug script, benchmark, or accuracy test) against the live server.
 
-`sky exec` has known issues with job submission for long-running background processes. Use **SSH + tmux** instead to manage server and client as separate named sessions.
-
-#### Step 1: SSH into the cluster
-
-```bash
-# Get the cluster IP
-CLUSTER_IP=$(sky status --ip $(cat .cluster_name_tpu))
-
-# SSH in (SkyPilot manages the key automatically)
-ssh -i ~/.ssh/sky-key gcpuser@$CLUSTER_IP
-```
-
-#### Step 2: Sync code and configure environment on the remote
-
-```bash
-# On the remote machine — sync latest code from local via rsync
-# Run this from your local machine in a separate terminal:
-CLUSTER_IP=$(sky status --ip $(cat .cluster_name_tpu))
-rsync -avz --exclude '.git' --exclude '__pycache__' --exclude '*.egg-info' \
-  -e "ssh -i ~/.ssh/sky-key" \
-  . gcpuser@$CLUSTER_IP:~/sky_workdir/
-
-# Back on the remote — install/update dependencies
-cd ~/sky_workdir
-uv sync --extra tpu
-```
-
-> The remote workdir is at `~/sky_workdir/` on the TPU VM.
-
-#### Step 3: Start the server in a named tmux session
+#### Step 1: Start the server in a named tmux session
 
 ```bash
 # On the remote machine:
@@ -126,7 +161,7 @@ tmux send-keys -t server \
   "uv run --extra tpu python <SERVER_COMMAND> [ARGS]" Enter
 ```
 
-#### Step 4: Wait for the server to be ready
+#### Step 2: Wait for the server to be ready
 
 ```bash
 # On the remote machine — poll until the service is ready:
@@ -144,7 +179,7 @@ Common readiness checks:
 | Log line appeared | `tmux capture-pane -pt server \| grep -q "server started"` |
 | Port is open | `nc -z localhost <PORT>` |
 
-#### Step 5: Run the client in a separate tmux session
+#### Step 3: Run the client in a separate tmux session
 
 ```bash
 # On the remote machine:
@@ -156,7 +191,7 @@ tmux send-keys -t client \
 tmux attach -t client
 ```
 
-#### Step 6: Inspect and clean up
+#### Step 4: Inspect and clean up
 
 ```bash
 # List all sessions
@@ -182,10 +217,13 @@ tmux kill-session -t client
 
 ## 5. Operational Notes
 
-- **Logs**: SkyPilot streams `stdout` and `stderr` directly to the terminal.
-- **Workdir sync**: `--workdir .` syncs the current local directory to the remote before running. Always use this flag.
-- **Interruption**: `Ctrl+C` may not kill the remote process; use `sky cancel` or check SkyPilot docs for cleanup.
-- **agent.md**: Check the project's `agent.md` for the active cluster name when working on parallel development tasks.
+- **SSH Access**: Use `sky ssh $(cat .cluster_name_tpu)` to connect to the cluster
+- **Code Sync**: Always sync code before running tests using `sky rsync` or direct rsync
+- **Tmux Sessions**: All test execution happens in named tmux sessions for reliability and log inspection
+- **Workdir**: The remote workdir is at `~/sky_workdir/` on the TPU VM
+- **Logs**: View logs using `tmux capture-pane` or by attaching to the session
+- **Interruption**: Detach from tmux with `Ctrl+B D`; sessions persist after disconnection
+- **agent.md**: Check the project's `agent.md` for the active cluster name when working on parallel development tasks
 
 ## 6. Functional-Point-Specific Testing
 
