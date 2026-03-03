@@ -1,0 +1,5 @@
+{
+  "name": "agent-worktree",
+  "description": "Create and manage git worktrees with metadata tracking for PR workflows",
+  "version": "1.0.0"
+}
